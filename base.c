@@ -4,10 +4,10 @@
 #include <pthread.h>
 #define hilos 5 // numero de hilos a crear si son fijos
 
-pthread_mutex_t mutex;// = PTHREAD_MUTEX_INITIALIZER; // MUTEX
+pthread_mutex_t mutex;// MUTEX
 
 int ejecutor(); // CREADOR DE HILOS PARA LA SOLUCION
-void finalizador(); // funcion estetica
+void finalizador(); // FUNCION ESTETICA PARA FINALIZAR
 
 /* INICIO RUTINAS */
 
@@ -17,7 +17,6 @@ void finalizador(); // funcion estetica
 
 /* INICIO VARIABLES GLOBALES */
 
-    int x = 1;
     int error_global = 0;
 
 /* FIN VARIABLES GLOBALES */
@@ -31,7 +30,6 @@ void finalizador(); // funcion estetica
             return EXIT_SUCCESS;
         }else{
             finalizador();
-            //printf("\nOCURRIO UN ERROR\n");
             perror("\nOCURRIO UN ERROR\n");
             return EXIT_FAILURE;
         }
@@ -84,11 +82,15 @@ int ejecutor(){
 
     void* funcion(){
         for(int i = 1; i<=2; i++){
-            pthread_mutex_lock(&mutex);
-            printf("Thread: [ %ld ] ## x: [ %d ]\n", (long int)pthread_self(), x);
-            x++;
-            sleep(1);
-            pthread_mutex_unlock(&mutex);
+            /* INICIO SECCION CRITICA */
+                pthread_mutex_lock(&mutex);
+
+                    /* INICIO PROCESOS EN SECCION CRITICA */
+                        printf("Thread: [ %ld ]\n", (long int)pthread_self());
+                    /* FIN PROCESOS EN SECCION CRITICA */
+
+                pthread_mutex_unlock(&mutex);
+            /* FIN SECCION CRITICA */
         }
         pthread_exit(0);
     }
@@ -96,6 +98,7 @@ int ejecutor(){
 /* FIN DE LAS FUNCIONES CON RUTINAS */
 
 /* INICIO FUNCIONES ESTETICAS */
+
     void finalizador(){
         int total = 20;
         for (int a = 0; a <= total; a++){
@@ -110,4 +113,5 @@ int ejecutor(){
             usleep(100000);
         }
     }
+    
 /* FIN FUNCIONES ESTETICAS*/
