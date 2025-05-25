@@ -1,0 +1,8 @@
+*.txt
+/*
+!*/ 
+!*.c
+!*.h
+!*.md
+!*.gitignore
+/.vscode
