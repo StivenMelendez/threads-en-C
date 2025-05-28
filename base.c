@@ -5,14 +5,14 @@
 #define hilos 5 // numero de hilos a crear si son fijos
 
 pthread_mutex_t mutex;// MUTEX
+pthread_barrier_t barrier; //barrier
 
 int ejecutor(); // CREADOR DE HILOS PARA LA SOLUCION
 void finalizador(); // FUNCION ESTETICA PARA FINALIZAR
 
 /* INICIO RUTINAS */
 
-    void* funcion(); 
-
+    void* funcion1(); 
 /* FIN RUTINAS */
 
 /* INICIO VARIABLES GLOBALES */
@@ -43,9 +43,10 @@ void finalizador(); // FUNCION ESTETICA PARA FINALIZAR
 int ejecutor(){
     pthread_t thread[hilos];
     pthread_mutex_init(&mutex, NULL);// iniciar mutex
+    pthread_barrier_init(&barrier, NULL, hilos);
     int hilos_creados = 0;
     for(int i = 0; i < hilos; i++){
-        if(pthread_create(&thread[i], NULL, &funcion, NULL)){
+        if(pthread_create(&thread[i], NULL, &funcion1, NULL)){
             printf("Error creating thread [%ld]\n", (long int)pthread_self());
             error_global = 1;
             hilos_creados = i;
@@ -73,6 +74,7 @@ int ejecutor(){
         }
     }
     pthread_mutex_destroy(&mutex);
+    pthread_barrier_destroy(&barrier);
     return 0;
 }
 
@@ -80,7 +82,7 @@ int ejecutor(){
 
 /* FUNCIONES QUE CONTIENEN RUTINAS QUE HARAN LOS HILOS */
 
-    void* funcion(){
+    void* funcion1(){
         for(int i = 1; i<=2; i++){
             /* INICIO SECCION CRITICA */
                 pthread_mutex_lock(&mutex);
@@ -92,6 +94,9 @@ int ejecutor(){
                 pthread_mutex_unlock(&mutex);
             /* FIN SECCION CRITICA */
         }
+        /*LA BARRERA HACE QUE DE LA SIGUIENTE LINEA LOS HILOS NO PASEN*/
+        pthread_barrier_wait(&barrier);
+        /*AL LLEGAR TODOS LOS HILOS ESTOS PASAN LA BARRERA ANTERIOR*/
         pthread_exit(0);
     }
 
