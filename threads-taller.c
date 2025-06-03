@@ -22,13 +22,12 @@
         - la posibilidad de perder 10% de la guarnicion luego de 60 rondas aumenta a 45%
         - la posibilidad de retroceder el asedio cada ronda de asedio es de 50%
             + el avance a la caida del castillo disminuye 7%
-            + el maximo de avance de caida del castillo es de -21%
+            + el minimo de avance de caida del castillo es de 0%
     GENERAL:
         - cada ronda que el asedio sea positivo se estimara si e fuerte puede caer o no.
         - la guarnicion no tiene repuesto dado que el castillo esta bajo asedio
         - los asediantes tienen un limite de reposicion de infanteria
 FIN PROBLEMA */
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -36,81 +35,111 @@ FIN PROBLEMA */
 #include <semaphore.h>
 #include <time.h>
 
-#define NIVEL_CASTILLO 4 //NIVEL DEL CASTILLO DEFENSOR
-#define GRUPOS_DE_INFANTERIA 4 // GRUPOS QUE ASEDIARAN EL CASTILLO, NUMERO DE HILOS
-#define CANTIDAD_DE_INFANTERIA_POR_GRUPO 3000 //STACKS DE INFANTERIA PROPORCION 1:3000
-#define GUARNICION 6000 //DEFENSORES DEL CASTILLO
-//#define HILOS 4 //ES IGUAL CANTIDAD DE GRUPOS DE ASEDIO
-#define REPOSICION 12000 //CANTIDAD DE REPOSICION
-
+#define NIVEL_CASTILLO 2
+#define GRUPOS_DE_INFANTERIA 2
+#define CANTIDAD_DE_INFANTERIA_POR_GRUPO 6000
+#define GUARNICION 6000
+#define REPOSICION 10000
 
 /* INICIO FUNCIONES */
-
-    int solucion_semaforos();
-    //void solucion_mutex ();
-    //void solucion_barreras();
-    void inicializacion(); // sirve para inicializar y resetear.
-    int calculador_de_probabilidad(int probabilidad);
-    void* asedio_con_semaforos(void* arg);
-    int ejecutor(); // CREADOR DE HILOS PARA LA SOLUCION
-    void finalizador(); // funcion estetica
-    
+int solucion_semaforos();
+int solucion_mutex();
+int solucion_espera_activa();
+void inicializacion();
+int calculador_de_probabilidad(int probabilidad);
+void* asedio_con_semaforos(void* arg);
+void* asedio_con_mutex(void* arg);
+void* asedio_con_espera_activa(void* arg);
+int cantidad_infanteria();
+void finalizador();
 /* FIN FUNCIONES */
 
 /* INICIO VARIABLES GLOBALES */
-    int ASEDIO; //ENTRE -21% Y 100%
-    int ATACANTES[GRUPOS_DE_INFANTERIA];
-    int DEFENSORES;
-    int RESERVAS;
-    int RONDAS;
-    int id[GRUPOS_DE_INFANTERIA]; //para no usar long int para el id del hilo
-    pthread_t HILOS[GRUPOS_DE_INFANTERIA];
-    sem_t asediando;
-    int estado_castillo = 1;
+int ASEDIO;
+int ATACANTES[GRUPOS_DE_INFANTERIA];
+int DEFENSORES;
+int RESERVAS;
+int RONDAS;
+int id[GRUPOS_DE_INFANTERIA];
+int estado_castillo;
+int enfermedad;
+int turno;
+int bandera_ocupado;
+int espera_apagada = 0;
+pthread_t HILOS[GRUPOS_DE_INFANTERIA];
+sem_t asediando;
+pthread_mutex_t mutex_asedio;
+
+pthread_barrier_t barrera_asedio;
 /* FIN VARIABLES GLOBALES */
 
-int main(){
-    if (solucion_semaforos() == 0){
+int main() {
+    srand(time(NULL));
+    
+    //sleep(10);
+    printf("\n\n=== COMENZANDO SIMULACIÓN CON ESPERA ACTIVA ===\n\n");
+    if (solucion_espera_activa() == 0) {
         finalizador();
-        printf("\nPROGRAMA FINALIZADO CON EXITO\n");
-        return EXIT_SUCCESS;
-    }else{
+        printf("\nSIMULACIÓN CON ESPERA ACTIVA FINALIZADA CON ÉXITO\n");
+    } else {
         finalizador();
-        perror("\nOCURRIO UN ERROR\n");
-        return EXIT_FAILURE;
+        printf("\nERROR EN SIMULACIÓN CON ESPERA ACTIVA\n");
     }
-    return EXIT_FAILURE;
+    //sleep(10);    
+    printf("\n\n=== COMENZANDO SIMULACIÓN CON SEMÁFOROS ===\n\n");
+    if (solucion_semaforos() == 0) {
+        finalizador();
+        printf("\nSIMULACIÓN CON SEMÁFOROS FINALIZADA CON ÉXITO\n");
+    } else {
+        finalizador();
+        printf("\nERROR EN SIMULACIÓN CON SEMÁFOROS\n");
+    }
+    //sleep(10);
+    printf("\n\n=== COMENZANDO SIMULACIÓN CON MUTEX ===\n\n");
+    if (solucion_mutex() == 0) {
+        finalizador();
+        printf("\nSIMULACIÓN CON MUTEX FINALIZADA CON ÉXITO\n");
+    } else {
+        finalizador();
+        printf("\nERROR EN SIMULACIÓN CON MUTEX\n");
+    }
+
+    
+    return EXIT_SUCCESS;
 }
 
-void inicializacion(){
-    ASEDIO = 0;
-    for(int x = 0; x < GRUPOS_DE_INFANTERIA; x++){
+void inicializacion() {
+    for (int x = 0; x < GRUPOS_DE_INFANTERIA; x++) {
         ATACANTES[x] = CANTIDAD_DE_INFANTERIA_POR_GRUPO;
-        //HILOS[x] = 0;
     }
+    ASEDIO = 0;
     DEFENSORES = GUARNICION;
     RESERVAS = REPOSICION;
+    RONDAS = 0;
+    estado_castillo = 1;
+    enfermedad = 1;
+    turno = 0;
+    bandera_ocupado = 0;
+    espera_apagada = 1;
 }
+int calculador_de_probabilidad(int probabilidad) {
+    if (probabilidad < 0 || probabilidad > 100) return -1;
+    if (probabilidad == 0) return 1;
+    if (probabilidad == 100) return 0;
 
-int calculador_de_probabilidad(int probabilidad){
-    int random_num = 0;
-    int probabilidad_restante = 100-probabilidad, retorno = 0;
-
-    if(probabilidad < 0 || probabilidad > 100) return -1; //error
-    if(probabilidad == 0) return 1; // no se cumple 
-    if(probabilidad == 100) return 0; // se cumple
-
-    random_num = rand() % 100 + 1;
-    if (random_num <= probabilidad) {
-        retorno = 0; // se cumple la probabilidad
-    } else {
-        retorno = 1; // no se cumple la probabilidad
+    int random_num = rand() % 100 + 1;
+    return (random_num <= probabilidad) ? 0 : 1;
+}
+int cantidad_infanteria() {
+    int cant = 0;
+    for (int x = 0; x < GRUPOS_DE_INFANTERIA; x++) {
+        cant += ATACANTES[x];
     }
+    return cant;
 }
-
-void finalizador(){
+void finalizador() {
     int total = 20;
-    for (int a = 0; a <= total; a++){
+    for (int a = 0; a <= total; a++) {
         int porcentaje = (a * 100) / total;
         printf("\r[");
         for (int i = 0; i < total; i++) {
@@ -122,108 +151,368 @@ void finalizador(){
         usleep(100000);
     }
 }
-
-int cantidad_infanteria(){
-    int cant;
-    for(int x = 0; x < GRUPOS_DE_INFANTERIA; x++){
-        cant =+ ATACANTES[x];
+/* SOLUCION CON SEMAFOROS */
+int solucion_semaforos() {
+    inicializacion();
+    sem_init(&asediando, 0, 1);
+    for (int i = 0; i < GRUPOS_DE_INFANTERIA; i++) {
+        id[i] = i;
+        if (pthread_create(&HILOS[i], NULL, &asedio_con_semaforos, &id[i])) {
+            printf("Error creando hilo [%d]\n", i);
+        }
     }
-    return cant;
+    for (int i = 0; i < GRUPOS_DE_INFANTERIA; i++) {
+        if (pthread_join(HILOS[i], NULL)) {
+            printf("Error esperando hilo [%d]\n", i);
+        }
+    }
+    sem_destroy(&asediando);
+    return 0;
+}
+void* asedio_con_semaforos(void* arg) {
+    int id = *((int*)arg);
+    int Aperdidas, Dperdidas;
+    while (cantidad_infanteria() >= 12000 && estado_castillo == 1 && DEFENSORES > GUARNICION * 0.20 && RONDAS < 30) {
+        sleep(1);
+        sem_wait(&asediando);
+        printf("\n[SEMÁFOROS] El grupo [%d] está asediando\n", id);
+        printf("Infantería actual: [%d]\n", ATACANTES[id]);
+        printf("Guarnición actual: [%d]\n", DEFENSORES);
+        printf("Reservas: [%d], Ronda: [%d], Asedio: [%d%%]\n", RESERVAS, RONDAS, ASEDIO);
+        if (calculador_de_probabilidad(ASEDIO) == 1) {
+            if (calculador_de_probabilidad(50) == 0) {
+                ASEDIO += 7;
+                if (ASEDIO > 100) ASEDIO = 100;
+                printf("¡Asedio avanza! Nuevo nivel: %d%%\n", ASEDIO);
+            } else if (calculador_de_probabilidad(50) == 0) {
+                ASEDIO -= 7;
+                if (ASEDIO < 0) ASEDIO = 0;
+                printf("¡Asedio retrocede! Nuevo nivel: %d%%\n", ASEDIO);
+            } else {
+                printf("El asedio no cambia esta ronda.\n");
+            }
+            Aperdidas = 0;
+            if (calculador_de_probabilidad(95) == 0) {
+                Aperdidas += ATACANTES[id] * 0.05;
+                printf("Bajas por atrición: %d\n", Aperdidas);
+            }
+            if (calculador_de_probabilidad(50) == 0) {
+                Aperdidas += ATACANTES[id] * 0.10;
+                printf("Bajas por asedio directo: %d\n", Aperdidas - (int)(ATACANTES[id] * 0.05));
+            }
+            if (calculador_de_probabilidad(10) == 0) {
+                Aperdidas += ATACANTES[id] * 0.10;
+                printf("Bajas por desorganización: %d\n", Aperdidas - (int)(ATACANTES[id] * 0.15));
+            }
+            ATACANTES[id] -= Aperdidas;
+            if (ATACANTES[id] < 0) ATACANTES[id] = 0;
+            Dperdidas = 0;
+            if (calculador_de_probabilidad(5) == 0) {
+                Dperdidas += DEFENSORES * 0.10;
+                printf("Bajas por atrición (defensores): %d\n", (int)(DEFENSORES * 0.10));
+            }
+            if (calculador_de_probabilidad(10) == 0) {
+                Dperdidas += DEFENSORES * 0.10;
+                printf("Bajas por defensa directa: %d\n", (int)(DEFENSORES * 0.10));
+            }
+            if (enfermedad == 1 && RONDAS % 30 == 0 && RONDAS != 0 && calculador_de_probabilidad(50) == 0) {
+                printf("¡Enfermedad en el castillo!\n");
+                enfermedad = 0;
+            }
+            if (enfermedad == 0 && RONDAS % 7 == 0) {
+                Dperdidas += DEFENSORES * 0.03;
+                printf("Bajas por enfermedad: %d\n", (int)(DEFENSORES * 0.03));
+            }
+            DEFENSORES -= Dperdidas;
+            if (DEFENSORES < 0) DEFENSORES = 0;
+            if (RESERVAS > 0 && Aperdidas > 0) {
+                int reposicion = (RESERVAS >= Aperdidas) ? Aperdidas : RESERVAS;
+                ATACANTES[id] += reposicion;
+                RESERVAS -= reposicion;
+                printf("Se reponen %d unidades desde la reserva.\n", reposicion);
+            }
+        }else {
+            estado_castillo = 0;
+            printf("\n¡[SEMAFOROS] EL CASTILLO HA CAIDO!\n");
+            printf("El castillo ha caído en la ronda %d con un nivel de asedio del %d%%\n", RONDAS, ASEDIO);
+            printf("Infantería restante: %d\n", cantidad_infanteria());
+            printf("Defensores restantes: %d\n", DEFENSORES);
+            printf("Reservas restantes: %d\n", RESERVAS);
+            sem_post(&asediando);
+            pthread_exit(0);
+        }
+        if (DEFENSORES <= GUARNICION * 0.20) {
+            printf("\n[SEMAFORO] ¡LA GUARNICIÓN HA SIDO DIEZMADA!\n");
+            sem_post(&asediando);
+            pthread_exit(0);
+        }
+        if (cantidad_infanteria() < 12000) {
+            printf("\n[SEMAFORO] ¡EL ASEDIO SE HA PERDIDO POR FALTA DE TROPAS!\n");
+            printf("Tropas totales: [%d] - Mínimo necesario: 12000\n", cantidad_infanteria());
+            estado_castillo = 0;
+            sem_post(&asediando);
+            pthread_exit(0);
+        }
+        RONDAS++;
+        sem_post(&asediando);
+        sleep(1);
+    }
+    pthread_exit(0);
+}
+/* SOLUCION CON MUTEX */
+int solucion_mutex() {
+    inicializacion();
+    pthread_mutex_init(&mutex_asedio, NULL);
+    for (int i = 0; i < GRUPOS_DE_INFANTERIA; i++) {
+        id[i] = i;
+        if (pthread_create(&HILOS[i], NULL, &asedio_con_mutex, &id[i])) {
+            printf("Error creando hilo [%d]\n", i);
+        }
+    }
+    for (int i = 0; i < GRUPOS_DE_INFANTERIA; i++) {
+        if (pthread_join(HILOS[i], NULL)) {
+            printf("Error esperando hilo [%d]\n", i);
+        }
+    }
+    pthread_mutex_destroy(&mutex_asedio);
+    return 0;
+}
+void* asedio_con_mutex(void* arg) {
+    int id = *((int*)arg);
+    int Aperdidas, Dperdidas;
+    while (cantidad_infanteria() >= 12000 && estado_castillo == 1 && DEFENSORES > GUARNICION * 0.20 && RONDAS < 30) {
+        sleep(1);
+        pthread_mutex_lock(&mutex_asedio);
+        printf("\n[MUTEX] El grupo [%d] está asediando\n", id);
+        printf("Infantería actual: [%d]\n", ATACANTES[id]);
+        printf("Guarnición actual: [%d]\n", DEFENSORES);
+        printf("Reservas: [%d], Ronda: [%d], Asedio: [%d%%]\n", RESERVAS, RONDAS, ASEDIO);
+        if (calculador_de_probabilidad(ASEDIO) == 1) {
+            if (calculador_de_probabilidad(50) == 0) {
+                ASEDIO += 7;
+                if (ASEDIO > 100) ASEDIO = 100;
+                printf("¡Asedio avanza! Nuevo nivel: %d%%\n", ASEDIO);
+            } else if (calculador_de_probabilidad(50) == 0) {
+                ASEDIO -= 7;
+                if (ASEDIO < 0) ASEDIO = 0;
+                printf("¡Asedio retrocede! Nuevo nivel: %d%%\n", ASEDIO);
+            } else {
+                printf("El asedio no cambia esta ronda.\n");
+            }
+            Aperdidas = 0;
+            if (calculador_de_probabilidad(95) == 0) {
+                Aperdidas += ATACANTES[id] * 0.05;
+                printf("Bajas por atrición: %d\n", Aperdidas);
+            }
+            if (calculador_de_probabilidad(50) == 0) {
+                int bajas_asedio = ATACANTES[id] * 0.10;
+                Aperdidas += bajas_asedio;
+                printf("Bajas por asedio directo: %d\n", bajas_asedio);
+            }
+            if (calculador_de_probabilidad(10) == 0) {
+                int bajas_desorg = ATACANTES[id] * 0.10;
+                Aperdidas += bajas_desorg;
+                printf("Bajas por desorganización: %d\n", bajas_desorg);
+            }
+            ATACANTES[id] -= Aperdidas;
+            if (ATACANTES[id] < 0) ATACANTES[id] = 0;
+            Dperdidas = 0;
+            if (calculador_de_probabilidad(5) == 0) {
+                int bajas_def = DEFENSORES * 0.10;
+                Dperdidas += bajas_def;
+                printf("Bajas por atrición (defensores): %d\n", bajas_def);
+            }
+            if (calculador_de_probabilidad(10) == 0) {
+                int bajas_combate = DEFENSORES * 0.10;
+                Dperdidas += bajas_combate;
+                printf("Bajas por defensa directa: %d\n", bajas_combate);
+            }
+            if (enfermedad == 1 && RONDAS % 30 == 0 && RONDAS != 0 && calculador_de_probabilidad(50) == 0) {
+                printf("¡Enfermedad en el castillo!\n");
+                enfermedad = 0;
+            }
+            if (enfermedad == 0 && RONDAS % 7 == 0) {
+                int bajas_enfermedad = DEFENSORES * 0.03;
+                Dperdidas += bajas_enfermedad;
+                printf("Bajas por enfermedad: %d\n", bajas_enfermedad);
+            }
+            DEFENSORES -= Dperdidas;
+            if (DEFENSORES < 0) DEFENSORES = 0;
+            if (RESERVAS > 0 && Aperdidas > 0) {
+                int reposicion = (RESERVAS >= Aperdidas) ? Aperdidas : RESERVAS;
+                ATACANTES[id] += reposicion;
+                RESERVAS -= reposicion;
+                printf("Se reponen %d unidades desde la reserva.\n", reposicion);
+            }
+        } else {
+            estado_castillo = 0;
+            printf("\n¡EL CASTILLO HA CAIDO!\n");
+            printf("El castillo ha caído en la ronda %d con un nivel de asedio del %d%%\n", RONDAS, ASEDIO);
+            printf("Infantería restante: %d\n", cantidad_infanteria());
+            printf("Defensores restantes: %d\n", DEFENSORES);
+            pthread_mutex_unlock(&mutex_asedio);
+            pthread_exit(0);
+        }
+        if (cantidad_infanteria() < 12000) {
+            printf("\n[MUTEX] ¡EL ASEDIO SE HA PERDIDO POR FALTA DE TROPAS!\n");
+            printf("Tropas totales: [%d] - Mínimo necesario: 12000\n", cantidad_infanteria());
+            estado_castillo = 0;
+            pthread_mutex_unlock(&mutex_asedio);
+            pthread_exit(0);
+        }
+        if (DEFENSORES <= GUARNICION * 0.20) {
+            printf("\n[MUTEX] ¡LA GUARNICIÓN HA SIDO DIEZMADA!\n");
+            pthread_mutex_unlock(&mutex_asedio);
+            pthread_exit(0);
+        }
+        RONDAS++;
+        pthread_mutex_unlock(&mutex_asedio);
+        sleep(1);   
+    }
+    pthread_exit(0);
+}
+/* SOLUCION CON ESPERA ACTIVA */
+int solucion_espera_activa() {
+    inicializacion();
+    for (int i = 0; i < GRUPOS_DE_INFANTERIA; i++) {
+        id[i] = i;
+        if (pthread_create(&HILOS[i], NULL, &asedio_con_espera_activa, &id[i])) {
+            printf("Error creando hilo [%d]\n", i);
+        }
+    }
+    for (int i = 0; i < GRUPOS_DE_INFANTERIA; i++) {
+        if (pthread_join(HILOS[i], NULL)) {
+            printf("Error esperando hilo [%d]\n", i);
+        }
+    }
+    return 0;
 }
 
-/* SOLUCION CON SEMAFOROS */
-    int solucion_semaforos(){
-        inicializacion();
-        for (int i = 0; i < GRUPOS_DE_INFANTERIA; i++){
-            id[i] = i;
-            if(pthread_create(&HILOS[i], NULL, &asedio_con_semaforos, &id[i])){
-                printf("Error creating thread [%ld]\n", (long int)pthread_self());
-            }
-        }
-
-        for (int i = 0; i < GRUPOS_DE_INFANTERIA; i++){
-            if(pthread_join(HILOS[i], NULL)){
-                printf("Error joining thread [%ld]\n", (long int)pthread_self());
-            }
-        }
-        return 1;
-    }
-
-    void* asedio_con_semaforos(void* arg){
-        int id = *((int*)arg);
-        int Aperdidas_acumuladas = 0, Aperdidas_al_momento = 0;
-        int Dperdidas_acumuladas = 0, Dperdidas_al_momento = 0;
-        while(cantidad_infanteria() >= 12000 && estado_castillo == 1){
-            printf("el grupo [%d] esta asediando\n",id);
-            printf("TAMAÑO DE LOS GRUPOS DE INFANTERIA [%d]\n", ATACANTES[id]);
-            printf("RESERVAS [%d]\n", RESERVAS);
-            printf("TAMAÑO DE LA GUARNICION DEFENSIVA: [%d]", DEFENSORES);
-            printf("PROCENTAJE DE ASEDIO [%d%%]\n", ASEDIO);
-            
-            // ¿AVANZA EL ASEDIO?
-            if (calculador_de_probabilidad(ASEDIO) == 1){
-                if(calculador_de_probabilidad(50) == 0){
-                    ASEDIO =+ 7;
-                    printf("Nuevo porcentaje de asedio [%d%%]\n", ASEDIO);
-                }else if(calculador_de_probabilidad(50) == 0){
-                    ASEDIO =- 7;
-                    printf("Nuevo porcentaje de asedio [%d%%]\n", ASEDIO);
-                }else{
-                    printf("status quo [%d%%]\n", ASEDIO);
-                }
-    
-                //¿MUERTES DE INFANTERIA ATACANTE?
-                if(calculador_de_probabilidad(95) == 0){//atricion
-                    Aperdidas_al_momento = ATACANTES[id] * 0.05;
-                    Aperdidas_acumuladas =+ Aperdidas_al_momento;
-                    ATACANTES[id] =- Aperdidas_acumuladas;
-                    printf("HAN MUERTO [%d] POR ATRICION \n", Aperdidas_acumuladas);
-                    Aperdidas_al_momento = 0;
-                }
-    
-                if(calculador_de_probabilidad(50) == 0){//asedio
-                    Aperdidas_al_momento = ATACANTES[id] * 0.1;
-                    Aperdidas_acumuladas = Aperdidas_al_momento;
-                    ATACANTES[id] =- Aperdidas_acumuladas;
-                    printf("HAN MUERTO [%d] ASEDIANDO \n", Aperdidas_acumuladas);
-                    Aperdidas_al_momento = 0;
-                }
-    
-                if(calculador_de_probabilidad(10) == 0){//despistados
-                    Aperdidas_al_momento = ATACANTES[id] * 0.1;
-                    Aperdidas_acumuladas = Aperdidas_al_momento;
-                    ATACANTES[id] =- Aperdidas_acumuladas;
-                    printf("HAN MUERTO [%d] POR MONGOLOS \n", Aperdidas_acumuladas);
-                    Aperdidas_al_momento = 0;
-                }
-    
-    
-    
-                //MUERTES DEL DEFENSOR
-                if(calculador_de_probabilidad(10) == 0){ //atricion al defender
-                    Dperdidas_al_momento = DEFENSORES * 0.05;
-                    DEFENSORES =- Dperdidas_al_momento;
-                    printf("HAN MUERTO [%d] POR ATRICION \n", Dperdidas_acumuladas);
-                }
-                
-    
-                printf("perdidas totales del atacante [%d]\n", Aperdidas_acumuladas);
-    
-                if(RESERVAS > 0 && Aperdidas_acumuladas > 0){ //REPONER DESDE LA RESERVA
-                    printf("se repondran [%d] de la reserva \n", Aperdidas_acumuladas);
-                    if (RESERVAS >= Aperdidas_acumuladas){
-                        RESERVAS =- Aperdidas_acumuladas;
-                        ATACANTES[id] =+ Aperdidas_acumuladas;
-                    }else if ((RESERVAS + ATACANTES[id]) <= 3000){
-                        ATACANTES[id] =+ RESERVAS;
-                    }
-                }
-
-            }else{
+void* asedio_con_espera_activa(void* arg) {
+    int id = *((int*)arg);
+    int Aperdidas, Dperdidas;
+    while (cantidad_infanteria() >= 12000 && estado_castillo == 1 && DEFENSORES > GUARNICION * 0.20 && RONDAS < 30 && espera_apagada == 1) {
+        while (turno != id || bandera_ocupado == 1) {
+            if (cantidad_infanteria() < 12000) {
+                printf("\n[ESPERA ACTIVA] ¡EL ASEDIO SE HA PERDIDO POR FALTA DE TROPAS!\n");
+                printf("Tropas totales: [%d] - Mínimo necesario: 12000\n", cantidad_infanteria());
                 estado_castillo = 0;
+                bandera_ocupado = 0;
+                espera_apagada = 0;
+                //return NULL;
+                //pthread_exit(0);
+            }else if (DEFENSORES <= GUARNICION * 0.20) {
+                printf("\n[ESPERA ACTIVA] ¡LA GUARNICIÓN HA SIDO DIEZMADA!\n");
+                return NULL;
+                //pthread_exit(0);
+            }else{
+                sleep(1);
             }
-            RONDAS++;
         }
-        return NULL;
+        bandera_ocupado = 1;
+        if (cantidad_infanteria() < 12000) {
+            printf("\n[ESPERA ACTIVA] ¡EL ASEDIO SE HA PERDIDO POR FALTA DE TROPAS!\n");
+            printf("Tropas totales: [%d] - Mínimo necesario: 12000\n", cantidad_infanteria());
+            estado_castillo = 0;
+            bandera_ocupado = 0;
+            espera_apagada = 0;
+            //pthread_exit(0);
+        }
+        printf("\n[ESPERA ACTIVA] El grupo [%d] está asediando\n", id);
+        printf("Infantería actual: [%d]\n", ATACANTES[id]);
+        printf("Guarnición actual: [%d]\n", DEFENSORES);
+        printf("Reservas: [%d], Ronda: [%d], Asedio: [%d%%]\n", RESERVAS, RONDAS, ASEDIO);
+        
+        if (calculador_de_probabilidad(ASEDIO) == 1) {
+            if (calculador_de_probabilidad(50) == 0) {
+                ASEDIO += 7;
+                if (ASEDIO > 100) ASEDIO = 100;
+                printf("¡Asedio avanza! Nuevo nivel: %d%%\n", ASEDIO);
+            } else if (calculador_de_probabilidad(50) == 0) {
+                ASEDIO -= 7;
+                if (ASEDIO < 0) ASEDIO = 0;
+                printf("¡Asedio retrocede! Nuevo nivel: %d%%\n", ASEDIO);
+            } else {
+                printf("El asedio no cambia esta ronda.\n");
+            }
+            
+            Aperdidas = 0;
+            if (calculador_de_probabilidad(95) == 0) {
+                Aperdidas += ATACANTES[id] * 0.05;
+                printf("Bajas por atrición: %d\n", Aperdidas);
+            }
+            if (calculador_de_probabilidad(50) == 0) {
+                int bajas_asedio = ATACANTES[id] * 0.10;
+                Aperdidas += bajas_asedio;
+                printf("Bajas por asedio directo: %d\n", bajas_asedio);
+            }
+            if (calculador_de_probabilidad(10) == 0) {
+                int bajas_desorg = ATACANTES[id] * 0.10;
+                Aperdidas += bajas_desorg;
+                printf("Bajas por desorganización: %d\n", bajas_desorg);
+            }
+            
+            ATACANTES[id] -= Aperdidas;
+            if (ATACANTES[id] < 0) ATACANTES[id] = 0;
+            
+            Dperdidas = 0;
+            if (calculador_de_probabilidad(5) == 0) {
+                int bajas_def = DEFENSORES * 0.10;
+                Dperdidas += bajas_def;
+                printf("Bajas por atrición (defensores): %d\n", bajas_def);
+            }
+            if (calculador_de_probabilidad(10) == 0) {
+                int bajas_combate = DEFENSORES * 0.10;
+                Dperdidas += bajas_combate;
+                printf("Bajas por defensa directa: %d\n", bajas_combate);
+            }
+            if (enfermedad == 1 && RONDAS % 30 == 0 && RONDAS != 0 && calculador_de_probabilidad(50) == 0) {
+                printf("¡Enfermedad en el castillo!\n");
+                enfermedad = 0;
+            }
+            if (enfermedad == 0 && RONDAS % 7 == 0) {
+                int bajas_enfermedad = DEFENSORES * 0.03;
+                Dperdidas += bajas_enfermedad;
+                printf("Bajas por enfermedad: %d\n", bajas_enfermedad);
+            }
+            
+            DEFENSORES -= Dperdidas;
+            if (DEFENSORES < 0) DEFENSORES = 0;
+            
+            if (RESERVAS > 0 && Aperdidas > 0) {
+                int reposicion = (RESERVAS >= Aperdidas) ? Aperdidas : RESERVAS;
+                ATACANTES[id] += reposicion;
+                RESERVAS -= reposicion;
+                printf("Se reponen %d unidades desde la reserva.\n", reposicion);
+            }
+        } else {
+            printf("\n¡EL CASTILLO HA CAIDO!\n");
+            printf("El castillo ha caído en la ronda %d con un nivel de asedio del %d%%\n", RONDAS, ASEDIO);
+            printf("Infantería restante: %d\n", cantidad_infanteria());
+            printf("Defensores restantes: %d\n", DEFENSORES);
+            estado_castillo = 0;
+            bandera_ocupado = 0;
+            espera_apagada = 0;
+            //return NULL;
+            //pthread_exit(0);
+        }
+        if (cantidad_infanteria() < 12000) {
+            printf("\n[ESPERA ACTIVA] ¡EL ASEDIO SE HA PERDIDO POR FALTA DE TROPAS!\n");
+            printf("Tropas totales: [%d] - Mínimo necesario: 12000\n", cantidad_infanteria());
+            estado_castillo = 0;
+            bandera_ocupado = 0;
+            espera_apagada = 0;
+            //return NULL;
+            //pthread_exit(0);
+        }
+        if (DEFENSORES <= GUARNICION * 0.20) {
+            printf("\n[ESPERA ACTIVA] ¡LA GUARNICIÓN HA SIDO DIEZMADA!\n");
+            //return NULL;
+            //pthread_exit(0);
+        }
+        RONDAS++;   
+        turno = (turno + 1) % GRUPOS_DE_INFANTERIA;
+        bandera_ocupado = 0;
     }
-/* FIN DE LA SOLUCION CON SEMAFOROS */
+    pthread_exit(0);
+}
