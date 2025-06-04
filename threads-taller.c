@@ -70,6 +70,8 @@ int turno;
 int bandera_ocupado;
 int espera_apagada;
 int rmu, rse, rea;
+int mej_mu, mej_se, mej_ea;
+long rapnue;
 pthread_t HILOS[GRUPOS_DE_INFANTERIA];
 sem_t asediando;
 pthread_mutex_t mutex_asedio;
@@ -84,12 +86,19 @@ para_espera_activa = {0, 0, 0, 0};
 
 /* FIN VARIABLES GLOBALES */
 
+long mejor_tiempo_semaforo;
+long mejor_tiempo_mutex;
+long mejor_tiempo_espera_activa;
+
 int main() {
     srand(time(NULL));
     while (1){
         rmu = 0;
         rse = 0;
         rea = 0;
+        mejor_tiempo_semaforo = __LONG_MAX__;
+        mejor_tiempo_mutex = __LONG_MAX__;
+        mejor_tiempo_espera_activa = __LONG_MAX__;
         printf("\n\n=== COMENZANDO SIMULACION CON SEMAFOROS ===\n\n");
         if (solucion_semaforos() == 0) {
             finalizador();
@@ -137,6 +146,7 @@ void inicializacion() {
     turno = 0;
     bandera_ocupado = 0;
     espera_apagada = 1;
+    rapnue = 0;
 }
 long para_medir_tiempo(long in, long fi){
     return (fi - in);
@@ -174,28 +184,47 @@ void finalizador() {
     }
 }
 
+void registrar_mejor_tiempo(long tiempo_actual, int metodo) {
+    switch (metodo) {
+        case 1: // Semáforos
+            if (tiempo_actual < mejor_tiempo_semaforo && tiempo_actual > 0)
+                mejor_tiempo_semaforo = tiempo_actual;
+            break;
+        case 2: // Mutex
+            if (tiempo_actual < mejor_tiempo_mutex && tiempo_actual > 0)
+                mejor_tiempo_mutex = tiempo_actual;
+            break;
+        case 3: // Espera activa
+            if (tiempo_actual < mejor_tiempo_espera_activa && tiempo_actual > 0)
+                mejor_tiempo_espera_activa = tiempo_actual;
+            break;
+    }
+}
+
 void comparar_metodos() {
     printf("\n\n***** COMPARACION DE RENDIMIENTO *****\n");
-    printf("Metodo         || Tiempo Promedio (ns)      || RONDAS\n");
+    printf("Metodo         || Mejor Tiempo (ms)      || RONDAS\n");
     printf("***************||***************************|| \n");
-    printf("SEMAFOROS      || [%.2f]**************|| [ %d ]\n", para_semaforo.prom, rse);
-    printf("MUTEX          || [%.2f]**************|| [ %d ]\n", para_mutex.prom, rmu);
-    printf("ESPERA ACTIVA  || [%.2f]**************|| [ %d ]\n", para_espera_activa.prom, rea);
+    printf("SEMAFOROS      || [%.5f]**************|| [ %d ]\n", mejor_tiempo_semaforo / 1000000.0, rse);
+    printf("MUTEX          || [%.5f]**************|| [ %d ]\n", mejor_tiempo_mutex / 1000000.0, rmu);
+    printf("ESPERA ACTIVA  || [%.5f]**************|| [ %d ]\n", mejor_tiempo_espera_activa / 1000000.0, rea);
     printf("**********************************************\n\n");
-    if (para_semaforo.prom <= para_mutex.prom && para_semaforo.prom <= para_espera_activa.prom) {
+    
+    // Determinar el método más rápido basado en el mejor tiempo
+    if (mejor_tiempo_semaforo <= mejor_tiempo_mutex && mejor_tiempo_semaforo <= mejor_tiempo_espera_activa) {
         printf("El metodo mas rapido es: SEMAFOROS\n");
     }
-    else if (para_mutex.prom <= para_semaforo.prom && para_mutex.prom <= para_espera_activa.prom) {
+    else if (mejor_tiempo_mutex <= mejor_tiempo_semaforo && mejor_tiempo_mutex <= mejor_tiempo_espera_activa) {
         printf("El metodo mas rapido es: MUTEX\n");
     }
     else {
         printf("El metodo mas rapido es: ESPERA ACTIVA\n");
     }
     
-    printf("\nTiempos en milisegundos:\n");
-    printf("SEMAFAROS: %.3f ms\n", para_semaforo.prom / 1000000.0);
-    printf("MUTEX: %.3f ms\n", para_mutex.prom / 1000000.0);
-    printf("ESPERA ACTIVA: %.3f ms\n", para_espera_activa.prom / 1000000.0);
+    /*printf("\nMejores tiempos en milisegundos:\n");
+    printf("SEMAFOROS: %.5f ms\n", mejor_tiempo_semaforo / 1000000.0);
+    printf("MUTEX: %.5f ms\n", mejor_tiempo_mutex / 1000000.0);
+    printf("ESPERA ACTIVA: %.5f ms\n", mejor_tiempo_espera_activa / 1000000.0);*/
 }
 
 /* SOLUCION CON SEMAFOROS */
@@ -215,6 +244,7 @@ int solucion_semaforos() {
     }
     para_semaforo.prom = para_hacer_promedio(para_semaforo.acum, RONDAS);
     rse = RONDAS;
+    mej_se = rapnue;
     printf("\nlos resultados de la medicion para [SEMAFORO] es: \n");
     printf("el promedio con:\n Rondas:[ %d ]\n El promedio es:[ %.2f ] nanosegundos\n", RONDAS, para_semaforo.prom);
     /*printf("presione ENTER para continuar:");
@@ -329,10 +359,15 @@ void* asedio_con_semaforos(void* arg) {
         // Capturar tiempo justo despues de liberar el semaforo
         clock_gettime(CLOCK_MONOTONIC, &tiempo_fin);
         
-        // Calcular tiempo en nanosegundos y acumularlo
+        // Calcular tiempo en nanosegundos y registrar el mejor tiempo
         para_semaforo.inicio = tiempo_inicio.tv_sec * 1000000000L + tiempo_inicio.tv_nsec;
         para_semaforo.fin = tiempo_fin.tv_sec * 1000000000L + tiempo_fin.tv_nsec;
-        para_semaforo.acum += para_medir_tiempo(para_semaforo.inicio, para_semaforo.fin);
+        long tiempo_actual = para_medir_tiempo(para_semaforo.inicio, para_semaforo.fin);
+        
+        // Registrar el mejor tiempo para semáforos (método 1)
+        registrar_mejor_tiempo(tiempo_actual, 1);
+        
+        para_semaforo.acum += tiempo_actual;
     }
     
     return NULL;
@@ -355,6 +390,7 @@ int solucion_mutex() {
 
     para_mutex.prom = para_hacer_promedio(para_mutex.acum, RONDAS);
     rmu = RONDAS;
+    mej_mu = rapnue;
     printf("\nlos resultados de la medicion para [MUTEX] es: \n");
     printf("el promedio con:\n Rondas:[ %d ]\n El promedio es:[ %.2f ] nanosegundos\n", RONDAS, para_mutex.prom);
     /*printf("presione ENTER para continuar:");
@@ -362,7 +398,6 @@ int solucion_mutex() {
     pthread_mutex_destroy(&mutex_asedio);
     return 0;
 }
-
 void* asedio_con_mutex(void* arg){
     int id = *((int*)arg);
     int Aperdidas, Dperdidas;
@@ -476,9 +511,14 @@ void* asedio_con_mutex(void* arg){
         
         clock_gettime(CLOCK_MONOTONIC, &tiempo_fin);
         
-        
+        // Calcular tiempo en nanosegundos y registrar el mejor tiempo
         para_mutex.inicio = tiempo_inicio.tv_sec * 1000000000L + tiempo_inicio.tv_nsec;
         para_mutex.fin = tiempo_fin.tv_sec * 1000000000L + tiempo_fin.tv_nsec;
+        long tiempo_actual = para_medir_tiempo(para_mutex.inicio, para_mutex.fin);
+        
+        // Registrar el mejor tiempo para mutex (método 2)
+        registrar_mejor_tiempo(tiempo_actual, 2);
+        
         para_mutex.acum += para_medir_tiempo(para_mutex.inicio, para_mutex.fin);
     }
     
@@ -504,6 +544,7 @@ int solucion_espera_activa() {
     }
     para_espera_activa.prom = para_hacer_promedio(para_espera_activa.acum, RONDAS);
     rea = RONDAS;
+    mej_ea = rapnue;
     printf("\nlos resultados de la medicion para [ESPERA ACTIVA] es: \n");
     printf("el promedio con:\n Rondas:[ %d ]\n El promedio es:[ %.2f ] nanosegundos\n", RONDAS, para_espera_activa.prom);
     /*printf("presione ENTER para continuar:");
@@ -653,9 +694,15 @@ void* asedio_con_espera_activa(void* arg) {
         clock_gettime(CLOCK_MONOTONIC, &tiempo_fin);
         
         
+        // Calcular tiempo en nanosegundos y registrar el mejor tiempo
         para_espera_activa.inicio = tiempo_inicio.tv_sec * 1000000000L + tiempo_inicio.tv_nsec;
         para_espera_activa.fin = tiempo_fin.tv_sec * 1000000000L + tiempo_fin.tv_nsec;
-        para_espera_activa.acum += para_medir_tiempo(para_espera_activa.inicio, para_espera_activa.fin);
+        long tiempo_actual = para_medir_tiempo(para_espera_activa.inicio, para_espera_activa.fin);
+        
+        // Registrar el mejor tiempo para espera activa (método 3)
+        registrar_mejor_tiempo(tiempo_actual, 3);
+        
+        para_espera_activa.acum += tiempo_actual;
         
         
         usleep(10000);
