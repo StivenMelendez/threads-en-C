@@ -70,12 +70,9 @@ int turno;
 int bandera_ocupado;
 int espera_apagada;
 int rmu, rse, rea;
-int mej_mu, mej_se, mej_ea;
-long rapnue;
 pthread_t HILOS[GRUPOS_DE_INFANTERIA];
 sem_t asediando;
 pthread_mutex_t mutex_asedio;
-pthread_barrier_t barrera_asedio;
 
 typedef struct{long inicio, fin, acum; double prom;}medicion;
 
@@ -146,7 +143,6 @@ void inicializacion() {
     turno = 0;
     bandera_ocupado = 0;
     espera_apagada = 1;
-    rapnue = 0;
 }
 long para_medir_tiempo(long in, long fi){
     return (fi - in);
@@ -244,7 +240,6 @@ int solucion_semaforos() {
     }
     para_semaforo.prom = para_hacer_promedio(para_semaforo.acum, RONDAS);
     rse = RONDAS;
-    mej_se = rapnue;
     printf("\nlos resultados de la medicion para [SEMAFORO] es: \n");
     printf("el promedio con:\n Rondas:[ %d ]\n El promedio es:[ %.2f ] nanosegundos\n", RONDAS, para_semaforo.prom);
     /*printf("presione ENTER para continuar:");
@@ -390,7 +385,6 @@ int solucion_mutex() {
 
     para_mutex.prom = para_hacer_promedio(para_mutex.acum, RONDAS);
     rmu = RONDAS;
-    mej_mu = rapnue;
     printf("\nlos resultados de la medicion para [MUTEX] es: \n");
     printf("el promedio con:\n Rondas:[ %d ]\n El promedio es:[ %.2f ] nanosegundos\n", RONDAS, para_mutex.prom);
     /*printf("presione ENTER para continuar:");
@@ -544,7 +538,6 @@ int solucion_espera_activa() {
     }
     para_espera_activa.prom = para_hacer_promedio(para_espera_activa.acum, RONDAS);
     rea = RONDAS;
-    mej_ea = rapnue;
     printf("\nlos resultados de la medicion para [ESPERA ACTIVA] es: \n");
     printf("el promedio con:\n Rondas:[ %d ]\n El promedio es:[ %.2f ] nanosegundos\n", RONDAS, para_espera_activa.prom);
     /*printf("presione ENTER para continuar:");
