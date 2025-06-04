@@ -52,6 +52,9 @@ void* asedio_con_mutex(void* arg);
 void* asedio_con_espera_activa(void* arg);
 int cantidad_infanteria();
 void finalizador();
+void comparar_metodos();
+long para_medir_tiempo(long in, long fi);
+long para_hacer_promedio(long acum, int ro);
 /* FIN FUNCIONES */
 
 /* INICIO VARIABLES GLOBALES */
@@ -65,46 +68,58 @@ int estado_castillo;
 int enfermedad;
 int turno;
 int bandera_ocupado;
-int espera_apagada = 0;
+int espera_apagada;
+int rmu, rse, rea;
 pthread_t HILOS[GRUPOS_DE_INFANTERIA];
 sem_t asediando;
 pthread_mutex_t mutex_asedio;
-
 pthread_barrier_t barrera_asedio;
+
+typedef struct{long inicio, fin, acum; double prom;}medicion;
+
+medicion 
+para_mutex = {0, 0, 0, 0}, 
+para_semaforo = {0, 0, 0, 0}, 
+para_espera_activa = {0, 0, 0, 0};
+
 /* FIN VARIABLES GLOBALES */
-
-
-/*PARA MEDIR EL RENDIMIENTO DE LOS METODOS*/
 
 int main() {
     srand(time(NULL));
     while (1){
-        printf("\n\n=== COMENZANDO SIMULACIÓN CON SEMÁFOROS ===\n\n");
+        rmu = 0;
+        rse = 0;
+        rea = 0;
+        printf("\n\n=== COMENZANDO SIMULACION CON SEMAFOROS ===\n\n");
         if (solucion_semaforos() == 0) {
             finalizador();
-            printf("\nSIMULACIÓN CON SEMÁFOROS FINALIZADA CON ÉXITO\n");
+            printf("\nSIMULACION CON SEMAFOROS FINALIZADA CON ÉXITO\n");
         } else {
             finalizador();
-            printf("\nERROR EN SIMULACIÓN CON SEMÁFOROS\n");
+            printf("\nERROR EN SIMULACION CON SEMAFOROS\n");
         }
-        sleep(5);    
-        printf("\n\n=== COMENZANDO SIMULACIÓN CON ESPERA ACTIVA ===\n\n");
+        //sleep(5);    
+        printf("\n\n=== COMENZANDO SIMULACION CON ESPERA ACTIVA ===\n\n");
         if (solucion_espera_activa() == 0) {
             finalizador();
-            printf("\nSIMULACIÓN CON ESPERA ACTIVA FINALIZADA CON ÉXITO\n");
+            printf("\nSIMULACION CON ESPERA ACTIVA FINALIZADA CON ÉXITO\n");
         } else {
             finalizador();
-            printf("\nERROR EN SIMULACIÓN CON ESPERA ACTIVA\n");
+            printf("\nERROR EN SIMULACION CON ESPERA ACTIVA\n");
         }
-        sleep(5);
-        printf("\n\n=== COMENZANDO SIMULACIÓN CON MUTEX ===\n\n");
+        //sleep(5);
+        printf("\n\n=== COMENZANDO SIMULACION CON MUTEX ===\n\n");
         if (solucion_mutex() == 0) {
             finalizador();
-            printf("\nSIMULACIÓN CON MUTEX FINALIZADA CON ÉXITO\n");
+            printf("\nSIMULACION CON MUTEX FINALIZADA CON ÉXITO\n");
         } else {
             finalizador();
-            printf("\nERROR EN SIMULACIÓN CON MUTEX\n");
+            printf("\nERROR EN SIMULACION CON MUTEX\n");
         }
+
+        comparar_metodos();
+        printf("presione ENTER para continuar:");
+        getchar();
     }
     return EXIT_SUCCESS;
 }
@@ -122,6 +137,12 @@ void inicializacion() {
     turno = 0;
     bandera_ocupado = 0;
     espera_apagada = 1;
+}
+long para_medir_tiempo(long in, long fi){
+    return (fi - in);
+}
+long para_hacer_promedio(long acum, int ro){
+    return ((double)acum/(double)ro);
 }
 int calculador_de_probabilidad(int probabilidad) {
     if (probabilidad < 0 || probabilidad > 100) return -1;
@@ -152,6 +173,31 @@ void finalizador() {
         usleep(100000);
     }
 }
+
+void comparar_metodos() {
+    printf("\n\n***** COMPARACION DE RENDIMIENTO *****\n");
+    printf("Metodo         || Tiempo Promedio (ns)      || RONDAS\n");
+    printf("***************||***************************|| \n");
+    printf("SEMAFOROS      || [%.2f]**************|| [ %d ]\n", para_semaforo.prom, rse);
+    printf("MUTEX          || [%.2f]**************|| [ %d ]\n", para_mutex.prom, rmu);
+    printf("ESPERA ACTIVA  || [%.2f]**************|| [ %d ]\n", para_espera_activa.prom, rea);
+    printf("**********************************************\n\n");
+    if (para_semaforo.prom <= para_mutex.prom && para_semaforo.prom <= para_espera_activa.prom) {
+        printf("El metodo mas rapido es: SEMAFOROS\n");
+    }
+    else if (para_mutex.prom <= para_semaforo.prom && para_mutex.prom <= para_espera_activa.prom) {
+        printf("El metodo mas rapido es: MUTEX\n");
+    }
+    else {
+        printf("El metodo mas rapido es: ESPERA ACTIVA\n");
+    }
+    
+    printf("\nTiempos en milisegundos:\n");
+    printf("SEMAFAROS: %.3f ms\n", para_semaforo.prom / 1000000.0);
+    printf("MUTEX: %.3f ms\n", para_mutex.prom / 1000000.0);
+    printf("ESPERA ACTIVA: %.3f ms\n", para_espera_activa.prom / 1000000.0);
+}
+
 /* SOLUCION CON SEMAFOROS */
 int solucion_semaforos() {
     inicializacion();
@@ -167,12 +213,19 @@ int solucion_semaforos() {
             printf("Error esperando hilo [%d]\n", i);
         }
     }
+    para_semaforo.prom = para_hacer_promedio(para_semaforo.acum, RONDAS);
+    rse = RONDAS;
+    printf("\nlos resultados de la medicion para [SEMAFORO] es: \n");
+    printf("el promedio con:\n Rondas:[ %d ]\n El promedio es:[ %.2f ] nanosegundos\n", RONDAS, para_semaforo.prom);
+    /*printf("presione ENTER para continuar:");
+    getchar();*/
     sem_destroy(&asediando);
     return 0;
 }
 void* asedio_con_semaforos(void* arg) {
     int id = *((int*)arg);
     int Aperdidas, Dperdidas;
+    struct timespec tiempo_inicio, tiempo_fin;
     
     while (1) {
         if (cantidad_infanteria() < 12000 || estado_castillo == 0 || 
@@ -180,15 +233,20 @@ void* asedio_con_semaforos(void* arg) {
             return NULL;
         }
         sleep(1);
-        sem_wait(&asediando);//INICIO DE LA SECCION CRITICA
+        
+        // Capturar tiempo justo antes de intentar adquirir el semaforo
+        clock_gettime(CLOCK_MONOTONIC, &tiempo_inicio);
+        
+        sem_wait(&asediando); // INICIO DE LA SECCION CRITICA
+        
         if (cantidad_infanteria() < 12000 || estado_castillo == 0 || 
             DEFENSORES <= GUARNICION * 0.20) {
             sem_post(&asediando);
             return NULL;
         }
-        printf("\n[SEMÁFOROS] El grupo [%d] está asediando\n", id);
-        printf("Infantería actual: [%d]\n", ATACANTES[id]);
-        printf("Guarnición actual: [%d]\n", DEFENSORES);
+        printf("\n[SEMAFOROS] El grupo [%d] esta asediando\n", id);
+        printf("Infa actual: [%d]\n", ATACANTES[id]);
+        printf("Guarnicion actual: [%d]\n", DEFENSORES);
         printf("Reservas: [%d], Ronda: [%d], Asedio: [%d%%]\n", RESERVAS, RONDAS, ASEDIO);
         
         if (calculador_de_probabilidad(ASEDIO) == 1) {
@@ -206,7 +264,7 @@ void* asedio_con_semaforos(void* arg) {
             Aperdidas = 0;
             if (calculador_de_probabilidad(95) == 0) {
                 Aperdidas += ATACANTES[id] * 0.05;
-                printf("Bajas por atrición: %d\n", Aperdidas);
+                printf("Bajas por atricion: %d\n", Aperdidas);
             }
             if (calculador_de_probabilidad(50) == 0) {
                 Aperdidas += ATACANTES[id] * 0.10;
@@ -214,14 +272,14 @@ void* asedio_con_semaforos(void* arg) {
             }
             if (calculador_de_probabilidad(10) == 0) {
                 Aperdidas += ATACANTES[id] * 0.10;
-                printf("Bajas por desorganización: %d\n", Aperdidas - (int)(ATACANTES[id] * 0.15));
+                printf("Bajas por desorganizacion: %d\n", Aperdidas - (int)(ATACANTES[id] * 0.15));
             }
             ATACANTES[id] -= Aperdidas;
             if (ATACANTES[id] < 0) ATACANTES[id] = 0;
             Dperdidas = 0;
             if (calculador_de_probabilidad(5) == 0) {
                 Dperdidas += DEFENSORES * 0.10;
-                printf("Bajas por atrición (defensores): %d\n", (int)(DEFENSORES * 0.10));
+                printf("Bajas por atricion (defensores): %d\n", (int)(DEFENSORES * 0.10));
             }
             if (calculador_de_probabilidad(10) == 0) {
                 Dperdidas += DEFENSORES * 0.10;
@@ -245,8 +303,8 @@ void* asedio_con_semaforos(void* arg) {
             }
         }else {
             printf("\n¡[SEMAFOROS] EL CASTILLO HA CAIDO!\n");
-            printf("El castillo ha caído en la ronda %d con un nivel de asedio del %d%%\n", RONDAS, ASEDIO);
-            printf("Infantería restante: %d\n", cantidad_infanteria());
+            printf("El castillo do en la ronda %d con un nivel de asedio del %d%%\n", RONDAS, ASEDIO);
+            printf("Infa restante: %d\n", cantidad_infanteria());
             printf("Defensores restantes: %d\n", DEFENSORES);
             printf("Reservas restantes: %d\n", RESERVAS);
             estado_castillo = 0;
@@ -254,20 +312,29 @@ void* asedio_con_semaforos(void* arg) {
             return NULL;
         }
         if (DEFENSORES <= GUARNICION * 0.20) {
-            printf("\n[SEMAFORO] ¡LA GUARNICIÓN HA SIDO DIEZMADA!\n");
+            printf("\n[SEMAFORO] ¡LA GUARNICION HA SIDO DIEZMADA!\n");
             sem_post(&asediando);
             return NULL;
         }
         if (cantidad_infanteria() < 12000) {
             printf("\n[SEMAFORO] ¡EL ASEDIO SE HA PERDIDO POR FALTA DE TROPAS!\n");
-            printf("Tropas totales: [%d] - Mínimo necesario: 12000\n", cantidad_infanteria());
+            printf("Tropas totales: [%dnimo necesario: 12000\n", cantidad_infanteria());
             estado_castillo = 0;
             sem_post(&asediando);//FIN DE LA SECCION CRTIICA
             return NULL;
         }
         RONDAS++;
-        sem_post(&asediando);
+        sem_post(&asediando); // FIN DE LA SECCION CRITICA
+        
+        // Capturar tiempo justo despues de liberar el semaforo
+        clock_gettime(CLOCK_MONOTONIC, &tiempo_fin);
+        
+        // Calcular tiempo en nanosegundos y acumularlo
+        para_semaforo.inicio = tiempo_inicio.tv_sec * 1000000000L + tiempo_inicio.tv_nsec;
+        para_semaforo.fin = tiempo_fin.tv_sec * 1000000000L + tiempo_fin.tv_nsec;
+        para_semaforo.acum += para_medir_tiempo(para_semaforo.inicio, para_semaforo.fin);
     }
+    
     return NULL;
 }
 /* SOLUCION CON MUTEX */
@@ -285,12 +352,21 @@ int solucion_mutex() {
             printf("Error esperando hilo [%d]\n", i);
         }
     }
+
+    para_mutex.prom = para_hacer_promedio(para_mutex.acum, RONDAS);
+    rmu = RONDAS;
+    printf("\nlos resultados de la medicion para [MUTEX] es: \n");
+    printf("el promedio con:\n Rondas:[ %d ]\n El promedio es:[ %.2f ] nanosegundos\n", RONDAS, para_mutex.prom);
+    /*printf("presione ENTER para continuar:");
+    getchar();*/
     pthread_mutex_destroy(&mutex_asedio);
     return 0;
 }
-void* asedio_con_mutex(void* arg) {
+
+void* asedio_con_mutex(void* arg){
     int id = *((int*)arg);
     int Aperdidas, Dperdidas;
+    struct timespec tiempo_inicio, tiempo_fin;
     
     while (1) {
         if (cantidad_infanteria() < 12000 || estado_castillo == 0 || 
@@ -298,17 +374,21 @@ void* asedio_con_mutex(void* arg) {
             return NULL;
         }
         sleep(1);
-
-        pthread_mutex_lock(&mutex_asedio); //INICIO DE LA SECCION CRTICA
+        
+        
+        clock_gettime(CLOCK_MONOTONIC, &tiempo_inicio);
+        
+        pthread_mutex_lock(&mutex_asedio); 
+        
         if (cantidad_infanteria() < 12000 || estado_castillo == 0 || 
             DEFENSORES <= GUARNICION * 0.20 || RONDAS >= 30) {
             pthread_mutex_unlock(&mutex_asedio);
             return NULL;
         }
         
-        printf("\n[MUTEX] El grupo [%d] está asediando\n", id);
-        printf("Infantería actual: [%d]\n", ATACANTES[id]);
-        printf("Guarnición actual: [%d]\n", DEFENSORES);
+        printf("\n[MUTEX] El grupo [%d] esta asediando\n", id);
+        printf("Infa actual: [%d]\n", ATACANTES[id]);
+        printf("Guarnicion actual: [%d]\n", DEFENSORES);
         printf("Reservas: [%d], Ronda: [%d], Asedio: [%d%%]\n", RESERVAS, RONDAS, ASEDIO);
         
         if (calculador_de_probabilidad(ASEDIO) == 1) {
@@ -326,7 +406,7 @@ void* asedio_con_mutex(void* arg) {
             Aperdidas = 0;
             if (calculador_de_probabilidad(95) == 0) {
                 Aperdidas += ATACANTES[id] * 0.05;
-                printf("Bajas por atrición: %d\n", Aperdidas);
+                printf("Bajas por atricion: %d\n", Aperdidas);
             }
             if (calculador_de_probabilidad(50) == 0) {
                 int bajas_asedio = ATACANTES[id] * 0.10;
@@ -336,7 +416,7 @@ void* asedio_con_mutex(void* arg) {
             if (calculador_de_probabilidad(10) == 0) {
                 int bajas_desorg = ATACANTES[id] * 0.10;
                 Aperdidas += bajas_desorg;
-                printf("Bajas por desorganización: %d\n", bajas_desorg);
+                printf("Bajas por desorganizacion: %d\n", bajas_desorg);
             }
             ATACANTES[id] -= Aperdidas;
             if (ATACANTES[id] < 0) ATACANTES[id] = 0;
@@ -344,7 +424,7 @@ void* asedio_con_mutex(void* arg) {
             if (calculador_de_probabilidad(5) == 0) {
                 int bajas_def = DEFENSORES * 0.10;
                 Dperdidas += bajas_def;
-                printf("Bajas por atrición (defensores): %d\n", bajas_def);
+                printf("Bajas por atricion (defensores): %d\n", bajas_def);
             }
             if (calculador_de_probabilidad(10) == 0) {
                 int bajas_combate = DEFENSORES * 0.10;
@@ -371,8 +451,8 @@ void* asedio_con_mutex(void* arg) {
         } else {
             estado_castillo = 0;
             printf("\n¡[MUTEX] EL CASTILLO HA CAIDO!\n");
-            printf("El castillo ha caído en la ronda %d con un nivel de asedio del %d%%\n", RONDAS, ASEDIO);
-            printf("Infantería restante: %d\n", cantidad_infanteria());
+            printf("El castillo do en la ronda %d con un nivel de asedio del %d%%\n", RONDAS, ASEDIO);
+            printf("Infanteria restante: %d\n", cantidad_infanteria());
             printf("Defensores restantes: %d\n", DEFENSORES);
             pthread_mutex_unlock(&mutex_asedio);
             return NULL;
@@ -380,18 +460,26 @@ void* asedio_con_mutex(void* arg) {
         
         if (cantidad_infanteria() < 12000) {
             printf("\n[MUTEX] ¡EL ASEDIO SE HA PERDIDO POR FALTA DE TROPAS!\n");
-            printf("Tropas totales: [%d] - Mínimo necesario: 12000\n", cantidad_infanteria());
+            printf("Tropas totales: [%d] pero elminimo necesario: 12000\n", cantidad_infanteria());
             estado_castillo = 0;
             pthread_mutex_unlock(&mutex_asedio);
             return NULL;
         }
         if (DEFENSORES <= GUARNICION * 0.20) {
-            printf("\n[MUTEX] ¡LA GUARNICIÓN HA SIDO DIEZMADA!\n");
-            pthread_mutex_unlock(&mutex_asedio);//FIN DE LA SECCION CRITICA
+            printf("\n[MUTEX] ¡LA GUARNICION HA SIDO DIEZMADA!\n");
+            pthread_mutex_unlock(&mutex_asedio);
             return NULL;
         }
         RONDAS++;
         pthread_mutex_unlock(&mutex_asedio);
+        
+        
+        clock_gettime(CLOCK_MONOTONIC, &tiempo_fin);
+        
+        
+        para_mutex.inicio = tiempo_inicio.tv_sec * 1000000000L + tiempo_inicio.tv_nsec;
+        para_mutex.fin = tiempo_fin.tv_sec * 1000000000L + tiempo_fin.tv_nsec;
+        para_mutex.acum += para_medir_tiempo(para_mutex.inicio, para_mutex.fin);
     }
     
     return NULL;
@@ -414,22 +502,50 @@ int solucion_espera_activa() {
             return 1;
         }
     }
+    para_espera_activa.prom = para_hacer_promedio(para_espera_activa.acum, RONDAS);
+    rea = RONDAS;
+    printf("\nlos resultados de la medicion para [ESPERA ACTIVA] es: \n");
+    printf("el promedio con:\n Rondas:[ %d ]\n El promedio es:[ %.2f ] nanosegundos\n", RONDAS, para_espera_activa.prom);
+    /*printf("presione ENTER para continuar:");
+    getchar();*/
     return 0;
 }
 void* asedio_con_espera_activa(void* arg) {
     int id = *((int*)arg);
     int Aperdidas, Dperdidas;
+    struct timespec tiempo_inicio, tiempo_fin;
     
-    while (cantidad_infanteria() >= 12000 && estado_castillo == 1 && DEFENSORES > GUARNICION * 0.20 && RONDAS < 30 && espera_apagada == 1) {
+    while (1) {
+        
+        if (cantidad_infanteria() < 12000 || estado_castillo == 0 || 
+            DEFENSORES <= GUARNICION * 0.20 || RONDAS >= 30 || espera_apagada == 0) {
+            return NULL;
+        }
+        
+        
         while (turno != id || bandera_ocupado == 1) {
+            
             if (estado_castillo == 0 || cantidad_infanteria() < 12000 || 
-                DEFENSORES <= GUARNICION * 0.20 || espera_apagada == 0) {
+                DEFENSORES <= GUARNICION * 0.20 || RONDAS >= 30 || espera_apagada == 0) {
                 return NULL;
             }
-            sleep(1);
+            usleep(10000); 
         }
-        bandera_ocupado = 1;//inicio de la seccion critica
-        sleep(1);
+        
+        
+        clock_gettime(CLOCK_MONOTONIC, &tiempo_inicio);
+        
+        
+        bandera_ocupado = 1; // INICIO DE LA SECCION CRITICA
+        
+        
+        if (cantidad_infanteria() < 12000 || estado_castillo == 0 || 
+            DEFENSORES <= GUARNICION * 0.20 || RONDAS >= 30 || espera_apagada == 0) {
+            bandera_ocupado = 0;
+            turno = (turno + 1) % GRUPOS_DE_INFANTERIA;
+            return NULL;
+        }
+        
         printf("\n[ESPERA ACTIVA] El grupo [%d] está asediando\n", id);
         printf("Infantería actual: [%d]\n", ATACANTES[id]);
         printf("Guarnición actual: [%d]\n", DEFENSORES);
@@ -451,12 +567,12 @@ void* asedio_con_espera_activa(void* arg) {
             Aperdidas = 0;
             if (calculador_de_probabilidad(95) == 0) {
                 Aperdidas += ATACANTES[id] * 0.05;
-                printf("Bajas por atrición: %d\n", Aperdidas);
+                printf("Bajas por atrición del atacante: %d\n", Aperdidas);
             }
             if (calculador_de_probabilidad(50) == 0) {
                 int bajas_asedio = ATACANTES[id] * 0.10;
                 Aperdidas += bajas_asedio;
-                printf("Bajas por asedio directo: %d\n", bajas_asedio);
+                printf("Bajas por asedio: %d\n", bajas_asedio);
             }
             if (calculador_de_probabilidad(10) == 0) {
                 int bajas_desorg = ATACANTES[id] * 0.10;
@@ -471,12 +587,12 @@ void* asedio_con_espera_activa(void* arg) {
             if (calculador_de_probabilidad(5) == 0) {
                 int bajas_def = DEFENSORES * 0.10;
                 Dperdidas += bajas_def;
-                printf("Bajas por atrición (defensores): %d\n", bajas_def);
+                printf("Bajas por atrición del defensor: %d\n", bajas_def);
             }
             if (calculador_de_probabilidad(10) == 0) {
                 int bajas_combate = DEFENSORES * 0.10;
                 Dperdidas += bajas_combate;
-                printf("Bajas por defensa directa: %d\n", bajas_combate);
+                printf("Bajas del defensor: %d\n", bajas_combate);
             }
             if (enfermedad == 1 && RONDAS % 30 == 0 && RONDAS != 0 && calculador_de_probabilidad(50) == 0) {
                 printf("¡Enfermedad en el castillo!\n");
@@ -485,7 +601,7 @@ void* asedio_con_espera_activa(void* arg) {
             if (enfermedad == 0 && RONDAS % 7 == 0) {
                 int bajas_enfermedad = DEFENSORES * 0.03;
                 Dperdidas += bajas_enfermedad;
-                printf("Bajas por enfermedad: %d\n", bajas_enfermedad);
+                printf("Bajas del defensor por enfermedad: %d\n", bajas_enfermedad);
             }
             
             DEFENSORES -= Dperdidas;
@@ -498,13 +614,16 @@ void* asedio_con_espera_activa(void* arg) {
                 printf("Se reponen %d unidades desde la reserva.\n", reposicion);
             }
         } else {
-            printf("\n¡EL CASTILLO HA CAIDO!\n");
+            printf("\n¡[ESPERA ACTIVA] EL CASTILLO HA CAIDO!\n");
             printf("El castillo ha caído en la ronda %d con un nivel de asedio del %d%%\n", RONDAS, ASEDIO);
             printf("Infantería restante: %d\n", cantidad_infanteria());
             printf("Defensores restantes: %d\n", DEFENSORES);
+            
+            
             estado_castillo = 0;
             espera_apagada = 0;
             bandera_ocupado = 0;
+            
             return NULL;
         }
         
@@ -522,14 +641,25 @@ void* asedio_con_espera_activa(void* arg) {
             printf("\n[ESPERA ACTIVA] ¡LA GUARNICIÓN HA SIDO DIEZMADA!\n");
             espera_apagada = 0;
             bandera_ocupado = 0;
+            
             return NULL;
         }
         
         RONDAS++;
         turno = (turno + 1) % GRUPOS_DE_INFANTERIA;
-        bandera_ocupado = 0; // fin de la seccion critica
-        sleep(1);
+        bandera_ocupado = 0; // FIN DE LA SECCION CRITICA
+        
+        
+        clock_gettime(CLOCK_MONOTONIC, &tiempo_fin);
+        
+        
+        para_espera_activa.inicio = tiempo_inicio.tv_sec * 1000000000L + tiempo_inicio.tv_nsec;
+        para_espera_activa.fin = tiempo_fin.tv_sec * 1000000000L + tiempo_fin.tv_nsec;
+        para_espera_activa.acum += para_medir_tiempo(para_espera_activa.inicio, para_espera_activa.fin);
+        
+        
+        usleep(10000);
     }
-    espera_apagada = 0;
+    
     return NULL;
 }
